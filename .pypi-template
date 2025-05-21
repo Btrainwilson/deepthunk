@@ -1,0 +1,20 @@
+a_description_for_the_package: Tokenvocab to object instantiation helper for LLMs
+classifiers: []
+console_scripts: []
+first_year_of_publication: '2025'
+github_account: btrainwilson
+github_repo_name: deepthunk
+keywords_describing_the_package: Tokenizer, LLM, Thunk, token
+license: MIT
+package_module_name: deepthunk
+package_name: DeepThunk
+package_tagline: LLM Thunker
+package_title: Deep Thunk
+readme: .github/README.md
+requires: []
+scripts: []
+version: 0.8.0
+your_author_name: Blake A. Wilson
+your_email_address: blake.wilson@alumni.purdue.edu
+your_full_name: Blake A. Wilson
+your_name: Blake A. Wilson
