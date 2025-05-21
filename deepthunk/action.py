@@ -188,6 +188,8 @@ class ActionSpace:
             )
 
             print(f"{fg256(141)}[{i}]{RESET} {action_str}({param_str})")
+            self.handlers[action](**params)
+
 
     def save_json(self, path: str):
         data = {
