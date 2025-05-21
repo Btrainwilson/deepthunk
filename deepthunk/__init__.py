@@ -3,3 +3,5 @@
 """
 __version__ = "0.0.1"
 from .action import ActionSpace
+from .module import LogitSpace
+from .stats import StatMoments
