@@ -29,6 +29,7 @@ class ActionSpace:
 
     def add_types(self, types: Dict[str, List[Any]]):
         self.types.update(types)
+        self.compile()
 
     def add_action(self, action_name: str, param_defs: Dict[str, str], handler: Optional[Callable] = None):
 
@@ -39,11 +40,11 @@ class ActionSpace:
 
         self.actions[action_name] = param_defs
         self.handlers[action_name] = handler
+        self.compile()
 
     def compile(self):
 
-        self.tokens = self.action_types
-        tidx = len(self.tokens)
+        tidx = self.num_actions
         self.tname_to_tidx = {a_name : i for i, a_name in enumerate(self.action_types)}
         self.tidx_to_tname = list(self.tname_to_tidx.keys())
 
