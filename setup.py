@@ -2,12 +2,12 @@ import os
 import re
 import setuptools
 
-NAME             = "DeepThunk"
+NAME             = "deepthunk"
 AUTHOR           = "Blake A. Wilson"
-AUTHOR_EMAIL     = "blake.wilson@alumni.purdue.edu"
-DESCRIPTION      = "Tokenvocab to object instantiation helper for LLMs"
+AUTHOR_EMAIL     = "blakewilson@alumni.purdue.edu"
+DESCRIPTION      = "Logits to type decoder for LLMs"
 LICENSE          = "MIT"
-KEYWORDS         = "Tokenizer, LLM, Thunk, token"
+KEYWORDS         = "decoder, LLM, thunk, token"
 URL              = "https://github.com/btrainwilson/" + NAME
 README           = ".github/README.md"
 CLASSIFIERS      = [

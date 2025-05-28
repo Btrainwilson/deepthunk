@@ -1,4 +1,4 @@
-# Deep Thunk
+# DeepThunk
 
 > LLM Thunker
 
@@ -15,4 +15,11 @@
 
 Visit [Read the Docs](https://DeepThunk.readthedocs.org) for the full documentation, including overviews and several examples.
 
+## Install
 
+`python -m pip install deepthunk`
+
+## Usage
+
+  import deepthunk as dt
+  

@@ -1,6 +1,8 @@
 import torch
 from deepthunk import LogitSpace
 
+lspace = LogitSpace()
+lspace[:10] = 
 
 
 B = 2
