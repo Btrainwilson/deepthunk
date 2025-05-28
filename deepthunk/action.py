@@ -127,7 +127,7 @@ class ActionSpace:
 
 
 
-    def print_vocab(self, verbose=False):
+    def pretty_print(self, verbose=False):
         print("\n" + fg256(217) + "=== Action Buffer (Actions and Parameters) ===" + RESET)
         action_rows = []
         for action, params in self.actions.items():
