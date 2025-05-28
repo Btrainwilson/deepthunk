@@ -117,14 +117,16 @@ class ActionSpace:
         return decoded
 
     def run(self, sequence: List[Dict[str, Any]]):
+        results = []
         for step in sequence:
-            action = step['type']
-            params = step['params']
+
+            action = list(step.keys())[0]
+            params = step[action] 
             if action not in self.handlers:
                 raise ValueError(f"No handler for action '{action}'")
-            self.handlers[action](**params)
+            results.append(self.handlers[action](**params))
 
-
+        return results
 
 
     def pretty_print(self, verbose=False):
