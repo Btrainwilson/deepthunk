@@ -113,7 +113,7 @@ class ActionSpace:
                 params[param_name] = self.types[type_name][int(t_i)]
                 i += 1
 
-            decoded.append({"type": action, "params": params})
+            decoded.append({action: params})
         return decoded
 
     def run(self, sequence: List[Dict[str, Any]]):
