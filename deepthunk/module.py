@@ -69,23 +69,23 @@ class LogitSpace:
 
 
 
-class TokenSample(TokenChoice):
-
-    def __init__(self, choices: List[Any], temperature: float = 1.0):
-        super().__init__(choices)
-        self.temperature = temperature
-
-    def __call__(self, logits: torch.Tensor):
-        if self.temperature <= 0:
-            raise ValueError("Temperature must be > 0")
-
-        # Apply temperature scaling and softmax
-        scaled_logits = logits / self.temperature
-        probs = torch.nn.functional.softmax(scaled_logits, dim=-1)
-
-        if logits.ndim == 1:
-            index = torch.multinomial(probs, num_samples=1)
-            return self.choices[index.item()]
-        else:
-            index = torch.multinomial(probs, num_samples=1).squeeze(-1)
-            return [self.choices[i] for i in index]
+#class TokenSample(TokenChoice):
+#
+#    def __init__(self, choices: List[Any], temperature: float = 1.0):
+#        super().__init__(choices)
+#        self.temperature = temperature
+#
+#    def __call__(self, logits: torch.Tensor):
+#        if self.temperature <= 0:
+#            raise ValueError("Temperature must be > 0")
+#
+#        # Apply temperature scaling and softmax
+#        scaled_logits = logits / self.temperature
+#        probs = torch.nn.functional.softmax(scaled_logits, dim=-1)
+#
+#        if logits.ndim == 1:
+#            index = torch.multinomial(probs, num_samples=1)
+#            return self.choices[index.item()]
+#        else:
+#            index = torch.multinomial(probs, num_samples=1).squeeze(-1)
+#            return [self.choices[i] for i in index]

@@ -4,6 +4,7 @@
 __version__ = "0.0.1"
 
 from .action import ActionSpace, ActionLogitSpace
-from .module import LogitSpace, TokenChoice
+from .module import LogitSpace
+from .decoder import TokenChoice
 from .stats import StatMoments
 

@@ -20,6 +20,29 @@ class VectorFn:
         return self.decode(x)
 
 
+class TokenDecoder:
+    def __init__(self, width: int, prep_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None):
+        self.prep_fn = prep_fn or (lambda x: x)  # Identity by default
+
+    def __len__(self):
+        return logit_width 
+
+    def __getitem__(self, idx_slice):
+        return self.choices[idx_slice]
+
+    def __setitem__(self, idx_slice, objs):
+        self.choices[idx_slice] = objs
+
+    def decode(self, probs: torch.Tensor) -> List[Any]:
+        """Override this in subclasses to change decoding behavior."""
+        index = probs.argmax(dim=-1)
+        return [self.choices[i] for i in index.view(-1)] if index.ndim > 0 else self.choices[index.item()]
+
+    def __call__(self, logits: torch.Tensor) -> Any:
+        prepped = self.prep_fn(logits)
+        return self.decode(prepped)
+
+
 class TokenChoice:
 
     def __init__(self, choices: List[Any]):
@@ -86,24 +109,3 @@ class TokenSampler(TokenDecoder):
             index = torch.multinomial(probs, num_samples=1).squeeze(-1)
             return index
 
-class TokenDecoder:
-    def __init__(self, logit_width: int, prep_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None):
-        self.prep_fn = prep_fn or (lambda x: x)  # Identity by default
-
-    def __len__(self):
-        return logit_width 
-
-    def __getitem__(self, idx_slice):
-        return self.choices[idx_slice]
-
-    def __setitem__(self, idx_slice, objs):
-        self.choices[idx_slice] = objs
-
-    def decode(self, probs: torch.Tensor) -> List[Any]:
-        """Override this in subclasses to change decoding behavior."""
-        index = probs.argmax(dim=-1)
-        return [self.choices[i] for i in index.view(-1)] if index.ndim > 0 else self.choices[index.item()]
-
-    def __call__(self, logits: torch.Tensor) -> Any:
-        prepped = self.prep_fn(logits)
-        return self.decode(prepped)

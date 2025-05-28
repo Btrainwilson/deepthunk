@@ -10,8 +10,6 @@ pv.add_types({
 pv.add_action("SE", {"q1": "qubit", "q2": "qubit", "a" : "angle"}, handler=lambda q1, q2, a: print("SE:", q1, q2, a * 3.14 / 10))
 pv.add_action("DE", {"q1": "qubit", "q2": "qubit", "q3": "qubit", "q4": "qubit", "a" : "angle"}, handler=lambda q1, q2, q3, q4, a: print("DE:", q1, q2, q3, q4, a * 3.14 / 10))
 
-pv.add_action( SE, qubit, qubit, angle)
-
 tokens = pv.encode([
     {"SE": {"q1": 2, "q2": 6, "a": 1 }},
     {"SE": {"q1": 3, "q2": 8, "a": 2 }},
