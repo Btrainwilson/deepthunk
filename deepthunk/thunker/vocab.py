@@ -6,9 +6,9 @@ from .thunker import Thunker, SpaceThunker
 
 class VocabDecoder(SpaceThunker):
 
-    def __init__(self, choices: List[Any], temp: float, subspace:torch.Tensor, device: str):
+    def __init__(self, choices: List[Any], temp: float, **kwargs):
 
-        super().__init__(subspace, device)
+        super().__init__(**kwargs)
 
         if temp <= 0:
             raise ValueError("Temperature must be positive.")
@@ -41,8 +41,8 @@ class VocabDecoder(SpaceThunker):
         return f"{self.__class__.__name__}(width={self.width}, choices={self.choices})"
 
 class OneHotIntDecoder(SpaceThunker):
-    def __init__(self, size: int, temp: float, subspace: Union[torch.Tensor, list, tuple], device: str = "cpu"):
-        super().__init__(subspace, device)
+    def __init__(self, size: int, temp: float, **kwargs):
+        super().__init__(**kwargs)
         if temp <= 0:
             raise ValueError("Temperature must be positive.")
         self.size = size
@@ -66,12 +66,11 @@ class OneHotIntDecoder(SpaceThunker):
         else:
             return torch.multinomial(probs, num_samples=1).squeeze(-1).tolist()
 
-    def encode(self, value: Union[int, List[int]], device: Optional[torch.device] = None) -> torch.Tensor:
+    def encode(self, value: Union[int, List[int]]) -> torch.Tensor:
         """
         Encode a single int or a list of ints as a one-hot tensor (batched if list).
         """
-        device = device or self.device
-        one_hot = torch.zeros(self.size, dtype=torch.float32, device=device)
+        one_hot = torch.zeros_like(self.subspace, dtype=torch.float32)
         one_hot[value] = 1.0
         return one_hot
 

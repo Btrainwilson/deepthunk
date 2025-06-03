@@ -47,12 +47,12 @@ class SpaceThunker(Thunker):
         else:
             return x.index_select(-1, idx)
 
-    def encode(self, value: Union[Any, List[Any]], device: Optional[torch.device] = None) -> torch.Tensor:
-        return torch.as_tensor(value, device=device or self.device)
+    def encode(self, value: Union[Any, List[Any]]) -> torch.Tensor:
+        raise NotImplemented
 
-    def to(self, device):
-        self.device = torch.device(device)
-        self._subspace = self._subspace.to(self.device)
+    def to(self, **kwargs):
+        self._subspace = self._subspace.to(**kwargs)
+        self.device = self._subspace.device
         return self
 
     def __repr__(self):
