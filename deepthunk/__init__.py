@@ -3,8 +3,12 @@
 """
 __version__ = "0.0.1"
 
-from .action import ActionSpace, ActionLogitSpace
-from .module import LogitSpace
-from .decoder import TokenChoice
-from .stats import StatMoments
 
+from .spacecache import SpaceCache
+from .thunker import ThunkCache, Thunker, vocab, OneHotIntDecoder
+from .lspace import LogitSpace
+from .fspace import FnSpace
+from .aspace import ActionSpace
+
+
+from . import thunker

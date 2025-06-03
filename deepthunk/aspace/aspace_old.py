@@ -6,7 +6,7 @@ from tabulate import tabulate
 from colorama import Fore, Style, init
 init(autoreset=True)
 
-from .module import LogitSpace
+from deepthunk import LogitSpace
 
 
 def fg256(n: int) -> str:
@@ -228,7 +228,6 @@ class ActionLogitSpace:
     def __init__(self):
 
         self.logitSpace = LogitSpace()
-
         self.action_types = ["START", "STOP"]
 
         # vocab meta

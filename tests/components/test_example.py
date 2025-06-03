@@ -2,10 +2,23 @@ import torch
 import torch.nn.functional as F
 
 from deepthunk import LogitSpace, TokenChoice, ActionSpace
+from deepthunk.aspace import ActionSpace, Action, AType, AParam
+
+xStrs = ["HI", "YE", "PHI"]
+angleType = AReal(0.0, 3.14, 10)
+
+aspace = ActionSpace()
+
+aspace += Action("TEST1",
+                 x=xStrs,
+                 y=angleType,
+                 action_fn = lambda x, y : print(x, y)
+                 )
+
+
 
 lspace = LogitSpace()
 
-data = ["HI", "YE", "PHI"]
 
 basic_toks = TokenChoice(["START", "STOP"])
 
