@@ -1,77 +1,74 @@
 import torch
-import shutil
-
-from collections import OrderedDict
-from typing import Callable, Dict, Union, Iterable, List, Tuple, Any
-from tabulate import tabulate
-from colorama import Fore, Style, init
-init(autoreset=True)
-
-from collections import defaultdict
-
-from .. import SpaceCache
+from typing import Dict, Union
 
 class LogitSpace:
     def __init__(self, device='cpu', cache=True):
-        self.slice_space = SpaceCache(device=device, cache=cache)
-        self.alias_map: Dict[str, Union[slice, torch.Tensor]] = {}   # alias → index
-        self.decoders: Dict[str, Callable] = OrderedDict()           # alias → processor
+        self.device = torch.device(device)
+        self.cache = cache
+        self.alias_map: Dict[str, slice] = {}      # alias -> slice
+        self.tensor_map: Dict[str, torch.Tensor] = {}  # alias -> cached tensor (if cache=True)
+        self.width = 0
 
-    def add(self, alias: str, idx: Union[slice, torch.Tensor, Iterable[int]], processor: Callable):
-        if not callable(processor):
-            raise TypeError(f"Processor for alias '{alias}' must be callable.")
+    def add(self, alias: str, size: int):
+        if alias in self.alias_map:
+            raise ValueError(f"{alias} already defined in LogitSpace.")
+        sl = slice(self.width, self.width + size)
+        self.alias_map[alias] = sl
+        if self.cache:
+            self.tensor_map[alias] = torch.arange(sl.start, sl.stop, device=self.device)
+        self.width += size
 
-        self.alias_map[alias] = idx
-        self.decoders[alias] = processor
-        self.slice_space[idx] = processor  # forward to SliceSpace
+    def __setattr__(self, name, value):
+        if name in {"device", "cache", "alias_map", "tensor_map", "width"}:
+            super().__setattr__(name, value)
+        elif isinstance(value, int):
+            self.add(name, value)
+        else:
+            raise TypeError("Only integer allocation is supported.")
 
-    def to(self, device: Union[str, torch.device]):
-        self.slice_space.to(device)
+    def __getattr__(self, name) -> Union[slice, torch.Tensor]:
+        if self.cache and name in self.tensor_map:
+            return self.tensor_map[name]
+        elif name in self.alias_map:
+            return self.alias_map[name]
+        raise AttributeError(f"'LogitSpace' has no attribute '{name}'")
 
-    def __call__(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        raw_outputs = self.slice_space(x)
-        return {alias: raw_outputs[self.slice_space._key(idx)] for alias, idx in self.alias_map.items()}
+    def __getitem__(self, name) -> Union[slice, torch.Tensor]:
+        return self.__getattr__(name)
+
+    def __setitem__(self, name, value):
+        self.__setattr__(name, value)
 
     def pretty_print(self):
+        from tabulate import tabulate
         rows = []
         for alias, idx in self.alias_map.items():
-            if isinstance(idx, slice):
-                idx_str = f"{idx.start}:{idx.stop}:{idx.step or 1}"
-            else:
-                idx_tensor = torch.tensor(idx) if not isinstance(idx, torch.Tensor) else idx
-                idx_str = str(idx_tensor.tolist())
+            idx_str = f"{idx.start}:{idx.stop}"
+            tensor_str = str(self.tensor_map[alias].tolist()) if self.cache else "-"
+            rows.append((alias, idx_str, tensor_str))
+        print("\nRegistered LogitSpace Entries:")
+        print(tabulate(rows, headers=["Alias", "Slice", "Tensor Indices"], tablefmt="fancy_grid"))
 
-            fn = self.decoders.get(alias, None)
-            fn_name = getattr(fn, "__name__", type(fn).__name__) if fn else "None"
-            rows.append((alias, idx_str, fn_name))
+    def slice_view(self, x: torch.Tensor, name: str) -> torch.Tensor:
+        if self.cache and name in self.tensor_map:
+            return x.index_select(-1, self.tensor_map[name])
+        else:
+            sl = self.alias_map[name]
+            return x[..., sl]
 
-        print(Fore.CYAN + Style.BRIGHT + "\nRegistered LogitSpace Entries:\n")
-        print(tabulate(rows, headers=["Alias", "Indices", "Processor"], tablefmt="fancy_grid"))
+# Usage Example:
 
-    def pretty_print_logits(self, x: torch.Tensor, use_probs: bool = True):
-        term_width = shutil.get_terminal_size().columns
-        bar_max_width = min(50, term_width - 40)
+if __name__ == "__main__":
+    lspace = LogitSpace(device='cpu', cache=True)
+    lspace.STATE = 10
+    lspace.REWARD = 5
 
-        if x.ndim == 1:
-            x = x.unsqueeze(0)
+    print("STATE indices:", lspace.STATE)    # tensor([0, 1, ..., 9])
+    print("REWARD indices:", lspace.REWARD)  # tensor([10, 11, ..., 14])
 
-        print(Fore.CYAN + Style.BRIGHT + "\nDecoded LogitSpace Values:\n")
+    x = torch.arange(lspace.width)
+    print("STATE view:", lspace.slice_view(x, "STATE"))
+    print("REWARD view:", lspace.slice_view(x, "REWARD"))
 
-        for alias, idx in self.alias_map.items():
-            sl = self.slice_space.normalize_index(idx, x.shape[-1])
-            decoder = self.decoders[alias]
-            sub_x = x.index_select(-1, sl)
-
-            for b, logit in enumerate(sub_x):
-                probs = torch.softmax(logit, dim=-1) if use_probs else logit
-                decoded = decoder(logit)
-
-                print(f"{Fore.YELLOW}{alias} [sample {b}]: {Fore.RESET}{decoded}")
-                for i, p in enumerate(probs):
-                    bar_len = int(p.item() * bar_max_width)
-                    bar = Fore.GREEN + "█" * bar_len + Fore.RESET
-                    print(f"{i:2d}: {bar}")
-                print()
-
-        print(Style.DIM + "-" * term_width)
+    lspace.pretty_print()
 
