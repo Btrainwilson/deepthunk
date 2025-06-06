@@ -1,22 +1,31 @@
+import torch
 import deepthunk
-from deepthunk import LogitSpace
+from tensor_mosaic import Mosaic
 
 
 # We begin by initializing a logitspace.
 # This keeps track of logits for us.
 
-lspace = LogitSpace()
+from deepthunk import Thunker
 
-# Think of it like a memory request to the logit space.
-# You query a size and you get back a view into the logit space.
-lspace.STATE(10)
-lspace.REWARD(10)
+class Mean(Thunker):
+    def decode(self, x):
+        return torch.mean(x, dim=-1)
+    def encode(self, x, mean):
+        return torch.ones_like(x) * mean
 
-# For spaces we know the size of a priori, we can assign it like this.
-# Otherwise, we can build out a thunker first and then allocate.
+mosaic = Mosaic(cache=True)
+mosaic.MEAN = 10
 
-#Now, you can use that allocated space in your thunkers.
+mean = Mean()
 
-x = torch.zeros()
+x = torch.randn(mosaic.shape).unsqueeze(0)
+print(mosaic.MEAN)
+print(type(mosaic.MEAN))
+y = x[:, mosaic.MEAN]
+y_mean = mean.decode(y)
+x_decode = mean.encode(torch.zeros_like(x), y_mean.unsqueeze(1))
+print(y_mean)
+
 
 

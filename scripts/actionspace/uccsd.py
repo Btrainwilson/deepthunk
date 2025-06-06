@@ -7,6 +7,8 @@ from dataclass import dataclass
 # 1. Create action space and add types (BEFORE compile)
 pv = ActionSpace()
 
+pv.actions = [] 
+
 pv.qubit = VocabDecoder(list(range(10)), temp=1.0)
 pv.angle = VocabDecoder([2**(-i) / 320 for i in range(-5, 5)], temp=1.0)
 

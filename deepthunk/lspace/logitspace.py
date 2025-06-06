@@ -9,6 +9,9 @@ class LogitSpace:
         self.tensor_map: Dict[str, torch.Tensor] = {}  # alias -> cached tensor (if cache=True)
         self.width = 0
 
+    def __len__(self):
+        return self.width
+
     def add(self, alias: str, size: int):
         if alias in self.alias_map:
             raise ValueError(f"{alias} already defined in LogitSpace.")

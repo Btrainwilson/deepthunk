@@ -18,6 +18,13 @@ class Thunker:
     def __repr__(self):
         return f"{self.__class__.__name__}()"
 
+class LogitThunker(Thunker):
+    def __init__(self, size:int):
+        self.size = size
+
+    def __len__(self):
+        return self.size
+
 class SpaceThunker(Thunker):
     def __init__(self, subspace: Union[torch.Tensor, list, tuple], device='cpu'):
         self.device = torch.device(device)

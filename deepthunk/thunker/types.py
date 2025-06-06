@@ -1,30 +1,74 @@
 import torch
 from .thunker import SpaceThunker
+from .simplex import greedy_fill_left
+from typing import Union, List
 
 class WeightedSum(SpaceThunker):
-    def __init__(self, pmass: torch.Tensor, **kwargs):
+    def __init__(self, mass: torch.Tensor, encoding_strategy="fill_left", **kwargs):
         super().__init__(**kwargs)
 
-        if tuple(pmass.shape) != tuple(self.subspace.shape):
-            raise ValueError(f"pmass.shape {pmass.shape} must match subspace.shape {self.subspace.shape}")
+        if tuple(mass.shape) != tuple(self.subspace.shape):
+            raise ValueError(f"mass.shape {mass.shape} must match subspace.shape {self.subspace.shape}")
 
-        self.pmass = pmass.float()
-        self.pmass.to(self.device)
+        self.mass = mass.float()
+        self.mass = self.mass.to(self.device)
+        self.encoding_strategy = encoding_strategy
 
     def to(self, **kwargs):
-        self.pmass = self.pmass.to(**kwargs)
+        self.mass = self.mass.to(**kwargs)
 
     @property
     def shape(self):
-        return self.pmass.shape
+        return self.mass.shape
 
     def decode(self, x: torch.Tensor) -> torch.Tensor:
-        pmass = self.pmass
+        mass = self.mass
         # Check that input matches the trailing dims
-        if pmass.shape != x.shape[-pmass.dim():]:
-            raise ValueError(f"Shape mismatch: logits shape {x.shape}, pmass shape {pmass.shape}")
-        reduction_dims = tuple(range(-pmass.dim(), 0))
-        return (x * pmass).sum(dim=reduction_dims)
+        if mass.shape != x.shape[-mass.dim():]:
+            raise ValueError(f"Shape mismatch: logits shape {x.shape}, mass shape {mass.shape}")
+        reduction_dims = tuple(range(-mass.dim(), 0))
+        return (x * mass).sum(dim=reduction_dims)
+
+    def encode(self, value: Union[float, List[float], torch.Tensor]) -> torch.Tensor:
+        mass = self.mass
+        value = torch.as_tensor(value, dtype=mass.dtype, device=mass.device)
+
+        if self.encoding_strategy == "fill_left":
+            # Greedy allocation along the mass axis
+            # mass: shape (..., n), value: (...,) or scalar
+            orig_shape = value.shape
+            mass_shape = mass.shape
+
+            # Flatten batch dims if any
+            batch_shape = value.shape if value.dim() > 0 else (1,)
+            mass_ = mass.expand(batch_shape + mass_shape)
+            value_ = value.expand(batch_shape)
+            value_ = value_.reshape(-1)
+            mass_ = mass_.reshape(len(value_), -1)  # (batch, n)
+            
+            # Run greedy_fill_left
+            alloc, _ = greedy_fill_left(mass_, value_)
+            alloc = alloc.view(batch_shape + mass_shape)
+            return alloc
+
+        # Default: simple proportional allocation
+        normed = mass / (mass.sum(dim=-1, keepdim=True) + 1e-8)
+        if value.shape == ():  # scalar
+            return value * normed
+        n_trailing = mass.dim()
+        view_shape = value.shape + (1,) * n_trailing
+        return value.view(view_shape) * normed
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(mass_shape={tuple(self.mass.shape)}, subspace={self.subspace.tolist()})"
+
+
+class Mean(SpaceThunker):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def decode(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.mean(x, dim=-1)
 
     def encode(self, value: Union[float, List[float], torch.Tensor]) -> torch.Tensor:
         value = torch.as_tensor(value, dtype=pmass.dtype)
@@ -84,31 +128,31 @@ class BitStringIntDecoder(WeightedSum):
         return f"{self.__class__.__name__}(size={self.size}, subspace={self.subspace.tolist()})"
 
 
-class WeightedSum(SpaceThunker):
-    def __init__(self, pmass:torch.Tensor, **kwargs):
-        super().__init__(**kwargs)
-        if temp <= 0:
-            raise ValueError("Temperature must be positive.")
-        self.size = size
-        self.pmass = pmass.float()
-
-
-    def mean(self, probs: torch.Tensor):
-        return torch.sum(probs * self.pmass, dim=-1)
-
-    def variance(self, probs: torch.Tensor):
-        mean = self.mean(probs).unsqueeze(-1)
-        return torch.sum(((self.pmass - mean) ** 2) * probs, dim=-1)
-
-    def skewness(self, probs: torch.Tensor):
-        mean = self.mean(probs).unsqueeze(-1)
-        var = self.variance(probs).unsqueeze(-1)
-        return torch.sum(((self.pmass - mean) ** 3) * probs, dim=-1) / (var.squeeze(-1).clamp(min=1e-6) ** 1.5)
-
-    def kurtosis(self, probs: torch.Tensor):
-        mean = self.mean(probs).unsqueeze(-1)
-        var = self.variance(probs).unsqueeze(-1)
-        return torch.sum(((self.pmass - mean) ** 4) * probs, dim=-1) / (var.squeeze(-1).clamp(min=1e-6) ** 2)
+#class WeightedSum(SpaceThunker):
+#    def __init__(self, pmass:torch.Tensor, **kwargs):
+#        super().__init__(**kwargs)
+#        if temp <= 0:
+#            raise ValueError("Temperature must be positive.")
+#        self.size = size
+#        self.pmass = pmass.float()
+#
+#
+#    def mean(self, probs: torch.Tensor):
+#        return torch.sum(probs * self.pmass, dim=-1)
+#
+#    def variance(self, probs: torch.Tensor):
+#        mean = self.mean(probs).unsqueeze(-1)
+#        return torch.sum(((self.pmass - mean) ** 2) * probs, dim=-1)
+#
+#    def skewness(self, probs: torch.Tensor):
+#        mean = self.mean(probs).unsqueeze(-1)
+#        var = self.variance(probs).unsqueeze(-1)
+#        return torch.sum(((self.pmass - mean) ** 3) * probs, dim=-1) / (var.squeeze(-1).clamp(min=1e-6) ** 1.5)
+#
+#    def kurtosis(self, probs: torch.Tensor):
+#        mean = self.mean(probs).unsqueeze(-1)
+#        var = self.variance(probs).unsqueeze(-1)
+#        return torch.sum(((self.pmass - mean) ** 4) * probs, dim=-1) / (var.squeeze(-1).clamp(min=1e-6) ** 2)
 
 
 # Floats
