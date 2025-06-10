@@ -21,25 +21,26 @@ class SE:
 
 actions = ["SE", "DE"]
 
-space = Mosaic(cache=True)
+space = Mosaic(dim=1)
+
 space.ACTIONS = len(actions)
 
 for i in range(4):
-    space.add(f"q{i}", 10)
+    space.add(f"q{i}", shape=(10,))
 
-actionThunker = VocabDecoder(actions, 1.0, subspace=space.ACTIONS)
+actionThunker = VocabDecoder(actions, 1.0)
 
 num_qs = 10
 
 q = {}
 for i in range(4):
     q_name = f"q{i}"
-    q[i] = OneHotIntDecoder(num_qs, 1.0, subspace=space[q_name])
+    q[i] = OneHotIntDecoder(num_qs, 1.0)
 
 angle_vals = [2**(-i) / 320 for i in range(-5, 5)]
 space.ANGLE = len(angle_vals)
 
-angleThunker = VocabDecoder(angle_vals, 1.0, subspace=space.ANGLE)
+angleThunker = VocabDecoder(angle_vals, 1.0)
 
 
 # Compose function space
@@ -55,7 +56,22 @@ def decode_fn(action, q1, q2, q3, q4, a):
     dec = []
     for i in range(len(action)):
         if action[i] == "SE":
-            dec.append(SE(q1[i], q2[i], a[i]))
+            dec.append(SE(q1[i], q3[i], a[i]))
+        elif action[i] == "DE":
+            dec.append(DE(q1[i], q2[i], q3[i], q4[i], a[i]))
+        else:
+            return None
+    return dec
+
+def encode_logits_fn(action):
+    dec = []
+    for ac in range(len(action)):
+        if isinstance(ac, SE):
+            
+        elif isinstance(ac, DE):
+
+        if action[i] == "SE":
+            dec.append(SE(q1[i], q3[i], a[i]))
         elif action[i] == "DE":
             dec.append(DE(q1[i], q2[i], q3[i], q4[i], a[i]))
         else:

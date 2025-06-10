@@ -7,6 +7,8 @@ from ..thunker.vocab import VocabDecoder
 import torch
 from typing import Dict, List, Any, Callable, Optional, Union
 
+from tensor_mosaic import Mosaic
+
 class ActionSpace:
     def __init__(self, device='cpu'):
         self.device = device

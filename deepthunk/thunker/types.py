@@ -3,6 +3,37 @@ from .thunker import SpaceThunker
 from .simplex import greedy_fill_left
 from typing import Union, List
 
+def randSimplex(mean, dj):
+    """
+        Based on 
+            D = sum_j dj*pj 
+            1 = sum_j pj*dj/D = sum_j q_j
+            -> pj = qj*D/dj
+    """
+    qj = torch.nn.functional.softmax(torch.randn(dj.shape), dim=-1)
+    return mean / dj * qj
+
+
+def randBiasedSimplex(mean, dj):
+    """
+        Based on 
+            D = sum_j dj*pj 
+            1 = sum_j pj*dj/D = sum_j q_j
+            -> pj = qj*D/dj
+    """
+    qj = torch.nn.functional.softmax(-torch.randn(dj.shape) / dj, dim=-1)
+    return mean / dj * qj
+
+
+def rand_weighted_simplex(mean, dj):
+    # Sample points uniformly from the simplex {x: sum_i x_i = 1, x_i >= 0}
+    u = torch.sort(torch.cat([torch.zeros(1), torch.rand(len(dj)-1), torch.ones(1)]))[0]
+    w = u[1:] - u[:-1]
+    # Now solve sum_j d_j * p_j = D, so p_j = D * w_j / (sum_j d_j * w_j)
+    denom = torch.dot(dj, w)
+    pj = mean * w / denom
+    return pj
+
 class WeightedSum(SpaceThunker):
     def __init__(self, mass: torch.Tensor, encoding_strategy="fill_left", **kwargs):
         super().__init__(**kwargs)

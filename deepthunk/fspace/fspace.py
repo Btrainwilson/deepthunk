@@ -9,6 +9,8 @@ from tabulate import tabulate
 
 from .. import ThunkCache, Thunker
 
+from tensor_mosaic import Mosaic
+
 def get_args(fn: Callable) -> list[str]:
     try:
         return list(inspect.signature(fn).parameters.keys())
@@ -24,41 +26,38 @@ class IdentityThunker(Thunker):
         return x
 
 
+from typing import Dict, Any, Callable, Union, List
+import torch
+
 class FnSpace:
-    def __init__(self, device='cpu'):
+    def __init__(self, dim=1, device='cpu', mosaic_kwargs=None):
         self.device = torch.device(device)
-        self.thunks = ThunkCache(device=self.device)
-        self.type_specs = {}        # name -> thunk
-        self.type_indices = {}      # name -> tensor of indices
-        self.fns = {}
-        self.eval_order = []
-        self.width = 0
+        self.mosaic = Mosaic(dim=dim, **(mosaic_kwargs or {}))
+        self.thunks: Dict[str, Any] = {}
+        self.subspaces: Dict[str, str] = {}  # name -> subspace name in mosaic
+        self.fns: Dict[str, Callable] = {}
+        self.eval_order: List[str] = []
 
     def add_type(self, **kwargs):
-        for name, spec in kwargs.items():
-            if isinstance(spec, tuple):
-                thunk, dim = spec
-            elif isinstance(spec, int):
-                thunk = IdentityThunker()
-                dim = spec
-            elif hasattr(spec, '__len__') or hasattr(spec, 'width'):
-                thunk = spec
-                dim = len(spec) if hasattr(spec, '__len__') else spec.width
+        for name, thunk in kwargs.items():
+            # Use .width if available, else len(thunk)
+            if hasattr(thunk, "width"):
+                width = thunk.width
+            elif hasattr(thunk, "__len__"):
+                width = len(thunk)
             else:
-                raise ValueError(f"Type for '{name}' must be int, (Thunker, dim), or a Thunker with __len__/width.")
-
-            indices = torch.arange(self.width, self.width + dim, device=self.device)
-            self.width += dim
-            self.type_specs[name] = thunk
-            self.type_indices[name] = indices
-            self.thunks.add(name, indices, thunk)
+                raise ValueError(f"Thunker '{name}' must have .width or __len__ defined")
+            # Allocate a region in the mosaic
+            self.mosaic.add(name, shape=width)
+            self.thunks[name] = thunk
+            self.subspaces[name] = name
 
     def add_fn(self, name: str, fn: Callable):
         if name in self.fns:
             raise ValueError(f"Function '{name}' already defined.")
         fn_args = get_args(fn)
         for arg in fn_args:
-            if arg not in self.type_specs:
+            if arg not in self.thunks:
                 raise ValueError(f"Parameter '{arg}' not instantiated.")
         self.fns[name] = fn
         self.eval_order.append(name)
@@ -70,100 +69,92 @@ class FnSpace:
         types: Union[List[str], str, None] = None,
         return_types: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Args:
-            x: input tensor
-            subFn: functions to evaluate (default: all in eval_order)
-            types: subset of types/variables to decode (default: all)
-            return_types: if True, return all decoded variables + function results;
-                        if False, return only the function results.
-
-        Returns:
-            Dict[str, Any]
-        """
         # 1. Decode variables (types)
         if types is None:
-            type_names = list(self.type_specs)
+            type_names = list(self.thunks)
         elif isinstance(types, str):
             type_names = [types]
         else:
             type_names = list(types)
         values = {}
         for name in type_names:
-            thunk = self.type_specs[name]
-            indices = self.type_indices[name]
-            values[name] = thunk.decode(x.index_select(-1, indices))
+            thunk = self.thunks[name]
+            region = self.mosaic[name]
+            # 1D/ND support for region:
+            values[name] = thunk.decode(x[..., *region])
 
         results = dict(values)
-
         # 2. Evaluate functions
         evals = [subFn] if isinstance(subFn, str) else subFn or self.eval_order
-        for name in evals:
-            fn = self.fns[name]
+        for fname in evals:
+            fn = self.fns[fname]
             args = {arg: results[arg] for arg in get_args(fn)}
-            results[name] = fn(**args)
+            results[fname] = fn(**args)
 
         if return_types:
             return results
         else:
-            return {name: results[name] for name in evals}
+            return {fname: results[fname] for fname in evals}
+
+    def encode(self, instances: list):
+        """
+        Given a list of dataclass instances (e.g., SE or DE), encode them to logits,
+        placing each encoded field into the correct mosaic subspace for each sample.
+        
+        Returns:
+            logits: [batch_size, ...mosaic.shape]
+        """
+        batch_size = len(instances)
+        shape = (batch_size, *self.mosaic.shape)
+        logits = torch.zeros(shape, device=self.device)
+
+        for i, inst in enumerate(instances):
+            # For each thunker, encode the corresponding value (if present in dataclass)
+            for name, thunker in self.thunks.items():
+                region = self.mosaic[name]
+                # Use getattr if possible, else skip
+                if hasattr(inst, name):
+                    value = getattr(inst, name)
+                    enc = thunker.encode(value)
+                    # Write logits for this sample to correct subspace
+                    logits[i][region] = enc
+                else:
+                    # Optionally, skip or zero-fill for this field
+                    pass
+
+        return logits
 
     def to(self, device):
         device = torch.device(device)
         self.device = device
-        for k in self.type_indices:
-            self.type_indices[k] = self.type_indices[k].to(device)
-        self.thunks.to(device)
+        self.mosaic.device = device  # assuming mosaic supports device changes
 
-    def __setitem__(self, name: str, obj):
-        if isinstance(obj, int):
-            self.add_type(**{name: obj})
-        elif isinstance(obj, tuple) and len(obj) == 2:
-            thunk, width = obj
-            if not callable(getattr(thunk, 'decode', None)):
-                raise TypeError("First item of tuple must be a Thunker with .decode")
-            if not isinstance(width, int):
-                raise TypeError("Second item of tuple must be the width (int)")
-            self.add_type(**{name: (thunk, width)})
-        elif hasattr(obj, "__len__") or hasattr(obj, "width"):
-            width = len(obj) if hasattr(obj, "__len__") else obj.width
-            self.add_type(**{name: (obj, width)})
-        elif callable(obj):
-            self.add_fn(name, obj)
-        else:
-            raise TypeError(f"Unsupported object for FnSpace: {obj}")
+    def __setitem__(self, name: str, thunk):
+        self.add_type(**{name: thunk})
 
     def __setattr__(self, name, value):
-        if name in {"device", "thunks", "type_specs", "type_indices", "fns", "eval_order", "width"}:
+        if name in {"device", "mosaic", "thunks", "subspaces", "fns", "eval_order"}:
             super().__setattr__(name, value)
         else:
             self.__setitem__(name, value)
 
     def __getattr__(self, name):
-        if name in self.type_specs:
-            return self.type_specs[name]
+        if name in self.thunks:
+            return self.thunks[name]
         elif name in self.fns:
             return self.fns[name]
         raise AttributeError(f"'FnSpace' object has no attribute '{name}'")
 
     def pretty_print(self):
-        # Print type specs (variables)
-        rows = []
-        for name in self.type_specs:
-            indices = self.type_indices[name]
-            indices_str = str(indices.tolist())
-            thunk = self.type_specs[name]
-            thunk_str = type(thunk).__name__
-            rows.append((name, indices_str, thunk_str))
-        print("\nVariables:")
-        print(tabulate(rows, headers=["Name", "Indices", "Thunker Type"], tablefmt="fancy_grid"))
-
-        # Print function specs
-        fn_rows = []
+        # Print variable info
+        print("\nFnSpace structure:")
+        for name in self.thunks:
+            region = self.mosaic[name]
+            print(f"{name}: thunker={type(self.thunks[name]).__name__}, mosaic region={region}")
+        # Print functions
+        print("\nFunctions:")
         for fname, fn in self.fns.items():
             args = list(get_args(fn))
             fn_type = type(fn).__name__ if not hasattr(fn, "__name__") else fn.__name__
-            fn_rows.append((fname, fn_type, ", ".join(args)))
-        print("\nFunctions:")
-        print(tabulate(fn_rows, headers=["Name", "Type", "Args"], tablefmt="fancy_grid"))
+            print(f"{fname}: ({', '.join(args)}) -> {fn_type}")
 

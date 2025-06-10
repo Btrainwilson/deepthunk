@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Union
 
 from .thunker import Thunker, SpaceThunker
 
-class VocabDecoder(SpaceThunker):
+class VocabDecoder(Thunker):
 
     def __init__(self, choices: List[Any], temp: float, **kwargs):
 
@@ -40,7 +40,7 @@ class VocabDecoder(SpaceThunker):
     def __repr__(self):
         return f"{self.__class__.__name__}(width={self.width}, choices={self.choices})"
 
-class OneHotIntDecoder(SpaceThunker):
+class OneHotIntDecoder(Thunker):
     def __init__(self, size: int, temp: float, **kwargs):
         super().__init__(**kwargs)
         if temp <= 0:
@@ -70,7 +70,7 @@ class OneHotIntDecoder(SpaceThunker):
         """
         Encode a single int or a list of ints as a one-hot tensor (batched if list).
         """
-        one_hot = torch.zeros_like(self.subspace, dtype=torch.float32)
+        one_hot = torch.zeros(self.size, dtype=torch.float32)
         one_hot[value] = 1.0
         return one_hot
 
