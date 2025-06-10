@@ -8,36 +8,45 @@ import torch
 # Helper to get function argument names
 @dataclass
 class DE:
-    q1: int
-    q2: int
-    q3: int
-    q4: int
+    e1: int
+    e2: int
+    o1: int
+    o2: int
     a: float
+    action: str = "DE"
 
 @dataclass
 class SE:
-    q1: int
-    q2: int
+    e1: int
+    o1: int
     a: float
+    action: str = "SE"
 
 # --- Usage Example ---
 # Suppose you have a set of thunker decoders, e.g. OneHotIntDecoder, VocabDecoder, etc.
 actions = ["SE", "DE"]
 angle_vals = [2**(-i) / 320 for i in range(-5, 5)]
-actionThunker = VocabDecoder(actions, 1.0)
-angleThunker = VocabDecoder(angle_vals, 1.0)
-q = {i: OneHotIntDecoder(10, 1.0) for i in range(4)}
+actionThunker = VocabDecoder(actions)
+angleThunker = VocabDecoder(angle_vals)
+q = {}
+num_electrons = 8
+num_qubits = 16
+
+q[0] = VocabDecoder([i for i in range(num_electrons)])
+q[1] = VocabDecoder([i for i in range(num_electrons)])
+q[2] = VocabDecoder([i for i in range(num_electrons, num_qubits)])
+q[3] = VocabDecoder([i for i in range(num_electrons, num_qubits)])
 
 fnspace = FnSpace(dim=1)
 fnspace.add_type(
     action=actionThunker,
-    q1=q[0], q2=q[1], q3=q[2], q4=q[3],
+    e1=q[0], e2=q[1], o1=q[2], o2=q[3],
     a=angleThunker,
 )
 
-def decode_fn(action, q1, q2, q3, q4, a):
+def decode_fn(action, e1, e2, o1, o2, a):
     # Dummy
-    return list(zip(action, q1, q2, q3, q4, a))
+    return list(zip(action, e1, e2, o1, o2, a))
 
 fnspace.add_fn("as_struct", decode_fn)
 
@@ -46,9 +55,17 @@ decoded = fnspace(x, return_types=True)
 print(decoded)
 
 batch = [
-    SE(q1=1, q2=2, a=angle_vals[0]),
-    DE(q1=3, q2=4, q3=5, q4=6, a=angle_vals[1]),
-    SE(q1=7, q2=8, a=angle_vals[2]),
+    SE(e1=1, o1=9, a=angle_vals[0]),
+    #DE(e1=3, o1=10, e2=5, o2=13, a=angle_vals[1]),
+    #SE(e1=7, o1=12, a=angle_vals[2]),
 ]
+
 logits = fnspace.encode(batch)
+
+
+
 print("Encoded logits shape:", logits.shape)
+print(logits)
+decoded = fnspace(logits)
+print(decoded)
+fnspace.pretty_print()

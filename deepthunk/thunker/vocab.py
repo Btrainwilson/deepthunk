@@ -6,11 +6,10 @@ from .thunker import Thunker, SpaceThunker
 
 class VocabDecoder(Thunker):
 
-    def __init__(self, choices: List[Any], temp: float, **kwargs):
-
+    def __init__(self, choices: List[Any], temp: Optional[float] = None, **kwargs):
         super().__init__(**kwargs)
 
-        if temp <= 0:
+        if temp is not None and temp <= 0:
             raise ValueError("Temperature must be positive.")
 
         self.choices = choices
@@ -21,11 +20,15 @@ class VocabDecoder(Thunker):
         return F.softmax(x / self.temp, dim=-1)
 
     def decode(self, x: torch.Tensor) -> Any:
-        probs = self._probs(x)
-        idx = torch.multinomial(probs, num_samples=1)
+        if self.temp is None:
+            idx = torch.argmax(x, dim=-1)
+        else:
+            probs = self._probs(x)
+            idx = torch.multinomial(probs, num_samples=1).squeeze(-1)
+
         if x.ndim == 1:
             return self.choices[idx.item()]
-        return [self.choices[i] for i in idx.squeeze(-1)]
+        return [self.choices[i] for i in idx]
 
     def encode(self, value: Union[Any, List[Any]], device: Optional[torch.device] = None) -> torch.Tensor:
         device = device or "cpu"
@@ -38,15 +41,16 @@ class VocabDecoder(Thunker):
         return logits if isinstance(value, list) else logits[0]
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(width={self.width}, choices={self.choices})"
+        return f"{self.__class__.__name__}(width={self.width}, choices={self.choices}, temp={self.temp})"
 
 class OneHotIntDecoder(Thunker):
-    def __init__(self, size: int, temp: float, **kwargs):
+    def __init__(self, size: int, temp: float, offset: int = 0, **kwargs):
         super().__init__(**kwargs)
         if temp <= 0:
             raise ValueError("Temperature must be positive.")
         self.size = size
         self.temp = temp
+        self.offset = int(offset)
 
     def __len__(self):
         return self.size
@@ -62,16 +66,16 @@ class OneHotIntDecoder(Thunker):
         probs = self._probs(x)
         # Unbatched: [size], Batched: [batch, size]
         if x.dim() == 1:
-            return torch.multinomial(probs, num_samples=1).item()
+            return torch.multinomial(probs, num_samples=1).item() + self.offset
         else:
-            return torch.multinomial(probs, num_samples=1).squeeze(-1).tolist()
+            return torch.multinomial(probs, num_samples=1).squeeze(-1).tolist() + self.offset
 
     def encode(self, value: Union[int, List[int]]) -> torch.Tensor:
         """
         Encode a single int or a list of ints as a one-hot tensor (batched if list).
         """
         one_hot = torch.zeros(self.size, dtype=torch.float32)
-        one_hot[value] = 1.0
+        one_hot[value - self.offset] = 1.0
         return one_hot
 
     def __repr__(self):
