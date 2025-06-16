@@ -19,12 +19,17 @@ class VocabDecoder(Thunker):
     def _probs(self, x: torch.Tensor) -> torch.Tensor:
         return F.softmax(x / self.temp, dim=-1)
 
-    def decode(self, x: torch.Tensor) -> Any:
+    def one_hot(self, x:torch.Tensor):
         if self.temp is None:
             idx = torch.argmax(x, dim=-1)
         else:
             probs = self._probs(x)
             idx = torch.multinomial(probs, num_samples=1).squeeze(-1)
+
+        return idx
+
+    def decode(self, x: torch.Tensor) -> Any:
+        idx = self.one_hot(x)
 
         if x.ndim == 1:
             return self.choices[idx.item()]
