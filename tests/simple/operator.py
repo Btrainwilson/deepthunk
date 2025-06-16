@@ -1,100 +1,84 @@
 from deepthunk import ActionSpace, FnSpace
 from deepthunk.thunker import OneHotIntDecoder, VocabDecoder
 from tensor_mosaic import Mosaic
-
-import torch
 from dataclasses import dataclass
+import torch
 
+# Helper to get function argument names
 @dataclass
 class DE:
-    q1: int
-    q2: int
-    q3: int
-    q4: int
+    e1: int
+    e2: int
+    o1: int
+    o2: int
     a: float
+    action: str = "DE"
 
 @dataclass
 class SE:
-    q1: int
-    q2: int
+    e1: int
+    o1: int
     a: float
+    action: str = "SE"
 
+# --- Usage Example ---
+# Suppose you have a set of thunker decoders, e.g. OneHotIntDecoder, VocabDecoder, etc.
 actions = ["SE", "DE"]
-
-space = Mosaic(dim=1)
-
-space.ACTIONS = len(actions)
-
-for i in range(4):
-    space.add(f"q{i}", shape=(10,))
-
-actionThunker = VocabDecoder(actions, 1.0)
-
-num_qs = 10
-
-q = {}
-for i in range(4):
-    q_name = f"q{i}"
-    q[i] = OneHotIntDecoder(num_qs, 1.0)
-
 angle_vals = [2**(-i) / 320 for i in range(-5, 5)]
-space.ANGLE = len(angle_vals)
+actionThunker = VocabDecoder(actions)
+angleThunker = VocabDecoder(angle_vals)
+q = {}
+num_electrons = 8
+num_qubits = 16
 
-angleThunker = VocabDecoder(angle_vals, 1.0)
+q[0] = VocabDecoder([i for i in range(num_electrons)])
+q[1] = VocabDecoder([i for i in range(num_electrons)])
+q[2] = VocabDecoder([i for i in range(num_electrons, num_qubits)])
+q[3] = VocabDecoder([i for i in range(num_electrons, num_qubits)])
+
+mosaic = Mosaic(dim=1)
+
+# Allocate space for each variable
+mosaic.action = 2
+mosaic.angle_vals = len(angle_vals)
+
+mosaic.e1 = len(q[0])
+mosaic.e2 = len(q[1])
+mosaic.o1 = len(q[2])
+mosaic.o2 = len(q[3])
 
 
-# Compose function space
-fnspace = FnSpace(device="cpu")
+
+
+fnspace = FnSpace(dim=1)
 fnspace.add_type(
     action=actionThunker,
-    q1=q[0], q2=q[1], q3=q[2], q4=q[3],
+    e1=q[0], e2=q[1], o1=q[2], o2=q[3],
     a=angleThunker,
 )
 
-def decode_fn(action, q1, q2, q3, q4, a):
-    # Returns a dataclass of the right type
-    dec = []
-    for i in range(len(action)):
-        if action[i] == "SE":
-            dec.append(SE(q1[i], q3[i], a[i]))
-        elif action[i] == "DE":
-            dec.append(DE(q1[i], q2[i], q3[i], q4[i], a[i]))
-        else:
-            return None
-    return dec
-
-def encode_logits_fn(action):
-    dec = []
-    for ac in range(len(action)):
-        if isinstance(ac, SE):
-            
-        elif isinstance(ac, DE):
-
-        if action[i] == "SE":
-            dec.append(SE(q1[i], q3[i], a[i]))
-        elif action[i] == "DE":
-            dec.append(DE(q1[i], q2[i], q3[i], q4[i], a[i]))
-        else:
-            return None
-    return dec
+def decode_fn(action, e1, e2, o1, o2, a):
+    # Dummy
+    return list(zip(action, e1, e2, o1, o2, a))
 
 fnspace.add_fn("as_struct", decode_fn)
 
-# Generate random logits
-x = torch.randn(4, *space.bin_shape)
-
-# Decode to all variables and function output
+x = torch.randn(4, *fnspace.mosaic.shape)
 decoded = fnspace(x, return_types=True)
-print("Decoded variables and output:")
-for k, v in decoded.items():
-    print(f"{k}: {v}")
+print(decoded)
 
-# Only get the output structure (as_struct)
-print("\nDecoded to dataclass:")
-out_structs = fnspace(x, subFn="as_struct")
-print(out_structs)
+batch = [
+    SE(e1=1, o1=9, a=angle_vals[0]),
+    DE(e1=3, o1=10, e2=5, o2=13, a=angle_vals[1]),
+    SE(e1=7, o1=12, a=angle_vals[2]),
+]
 
-# Optionally: print a pretty table of the fnspace structure
-print("\nFnSpace structure:")
+logits = fnspace.encode(batch)
+
+
+
+print("Encoded logits shape:", logits.shape)
+print(logits)
+decoded = fnspace(logits)
+print(decoded)
 fnspace.pretty_print()
-

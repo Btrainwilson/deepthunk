@@ -43,6 +43,9 @@ class VocabDecoder(Thunker):
     def __repr__(self):
         return f"{self.__class__.__name__}(width={self.width}, choices={self.choices}, temp={self.temp})"
 
+    def __len__(self):
+        return len(self.choices)
+
 class OneHotIntDecoder(Thunker):
     def __init__(self, size: int, temp: float, offset: int = 0, **kwargs):
         super().__init__(**kwargs)

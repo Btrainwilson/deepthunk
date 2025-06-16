@@ -14,8 +14,9 @@ class Mean(Thunker):
     def encode(self, x, mean):
         return torch.ones_like(x) * mean
 
-mosaic = Mosaic(cache=True)
+mosaic = Mosaic(dim = 1)
 mosaic.MEAN = 10
+print(mosaic.shape)
 
 mean = Mean()
 
