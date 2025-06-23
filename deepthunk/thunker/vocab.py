@@ -5,6 +5,13 @@ from typing import Any, List, Optional, Union
 from .thunker import Thunker, SpaceThunker
 
 class VocabDecoder(Thunker):
+    """
+    Maps between vocabulary values and logits.
+
+    Args:
+        choices (List[Any]): the vocabulary.
+        temp (float, optional): sampling temperature.  If ``None`` use arg-max.
+    """
 
     def __init__(self, choices: List[Any], temp: Optional[float] = None, **kwargs):
         super().__init__(**kwargs)
@@ -16,37 +23,74 @@ class VocabDecoder(Thunker):
         self.temp = temp
         self.width = len(choices)
 
+    # ---------- internal helpers ---------- #
+
     def _probs(self, x: torch.Tensor) -> torch.Tensor:
         return F.softmax(x / self.temp, dim=-1)
 
-    def idx(self, x:torch.Tensor):
+    def idx(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the sampled / arg-max indices."""
         if self.temp is None:
             idx = torch.argmax(x, dim=-1).to(torch.long)
         else:
             probs = self._probs(x)
             idx = torch.multinomial(probs, num_samples=1).squeeze(-1).to(torch.long)
-
         return idx
 
-    def decode(self, x: torch.Tensor) -> Any:
+    # ---------- public API ---------- #
+
+    def decode(
+        self,
+        x: torch.Tensor,
+        *,
+        one_hot: bool = False,   # <-- new flag
+    ) -> Union[Any, List[Any], torch.Tensor]:
+        """
+        Decode logits into vocabulary entries **or** one-hot vectors.
+
+        Args:
+            x (torch.Tensor): 1-D or 2-D logits tensor.
+            one_hot (bool): return one-hot representation instead of values.
+
+        Returns:
+            If ``one_hot`` is False (default): the decoded value(s).  
+            If ``one_hot`` is True: a float tensor of shape (*, width)
+            containing one-hot vectors for the selected indices.
+        """
         idx = self.idx(x)
+
+        if one_hot:
+            return F.one_hot(idx, num_classes=self.width).to(torch.float32)
 
         if x.ndim == 1:
             return self.choices[idx.item()]
         return [self.choices[i] for i in idx]
 
-    def encode(self, value: Union[Any, List[Any]], device: Optional[torch.device] = None) -> torch.Tensor:
+    def encode(
+        self,
+        value: Union[Any, List[Any]],
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        """
+        Convert value(s) into one-hot logits.
+        """
         device = device or "cpu"
         values = [value] if not isinstance(value, list) else value
         logits = torch.zeros((len(values), self.width), dtype=torch.float32, device=device)
+
         for i, v in enumerate(values):
             if v not in self.choices:
                 raise ValueError(f"Value '{v}' not in vocabulary {self.choices}")
-            logits[i, self.choices.index(v)] = 1
+            logits[i, self.choices.index(v)] = 1.0
         return logits if isinstance(value, list) else logits[0]
 
+    # ---------- misc ---------- #
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(width={self.width}, choices={self.choices}, temp={self.temp})"
+        return (
+            f"{self.__class__.__name__}("
+            f"width={self.width}, choices={self.choices}, temp={self.temp})"
+        )
 
     def __len__(self):
         return len(self.choices)
