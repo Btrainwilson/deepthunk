@@ -29,7 +29,7 @@ class VocabDecoder(Thunker):
         return idx
 
     def decode(self, x: torch.Tensor) -> Any:
-        idx = self.one_hot(x)
+        idx = self.idx(x)
 
         if x.ndim == 1:
             return self.choices[idx.item()]
