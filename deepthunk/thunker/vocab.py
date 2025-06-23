@@ -4,13 +4,18 @@ from typing import Any, List, Optional, Union
 
 from .thunker import Thunker, SpaceThunker
 
+from typing import List, Any, Optional, Union
+import torch
+import torch.nn.functional as F
+
+
 class VocabDecoder(Thunker):
     """
     Maps between vocabulary values and logits.
 
     Args:
-        choices (List[Any]): the vocabulary.
-        temp (float, optional): sampling temperature.  If ``None`` use arg-max.
+        choices (List[Any]):  the vocabulary.
+        temp    (float|None): sampling temperature.  If None, use arg-max.
     """
 
     def __init__(self, choices: List[Any], temp: Optional[float] = None, **kwargs):
@@ -20,22 +25,31 @@ class VocabDecoder(Thunker):
             raise ValueError("Temperature must be positive.")
 
         self.choices = choices
-        self.temp = temp
-        self.width = len(choices)
+        self.temp    = temp
+        self.width   = len(choices)
 
     # ---------- internal helpers ---------- #
 
-    def _probs(self, x: torch.Tensor) -> torch.Tensor:
-        return F.softmax(x / self.temp, dim=-1)
+    @staticmethod
+    def _probs(x: torch.Tensor, temp: float) -> torch.Tensor:
+        """Softmax along last dim with temperature."""
+        return F.softmax(x / temp, dim=-1)
 
     def idx(self, x: torch.Tensor) -> torch.Tensor:
-        """Return the sampled / arg-max indices."""
-        if self.temp is None:
-            idx = torch.argmax(x, dim=-1).to(torch.long)
-        else:
-            probs = self._probs(x)
-            idx = torch.multinomial(probs, num_samples=1).squeeze(-1).to(torch.long)
-        return idx
+        """
+        Return indices selected from each last-dim slice of *x*.
+
+        Handles arbitrary batch/sequence dimensions.
+        """
+        if self.temp is None:                       # arg-max mode (deterministic)
+            return torch.argmax(x, dim=-1, keepdim=False).to(torch.long)
+
+        # ----- temperature sampling (multinomial) -----
+        probs       = self._probs(x, self.temp)     # same shape as x
+        orig_shape  = probs.shape[:-1]
+        flat_probs  = probs.reshape(-1, self.width) # 2-D for multinomial
+        flat_idx    = torch.multinomial(flat_probs, num_samples=1).squeeze(-1)
+        return flat_idx.view(*orig_shape)           # back to (*batch_dims)
 
     # ---------- public API ---------- #
 
@@ -43,28 +57,28 @@ class VocabDecoder(Thunker):
         self,
         x: torch.Tensor,
         *,
-        one_hot: bool = False,   # <-- new flag
+        one_hot: bool = False,
     ) -> Union[Any, List[Any], torch.Tensor]:
         """
-        Decode logits into vocabulary entries **or** one-hot vectors.
+        Decode *x* into vocabulary entries **or** one-hot vectors.
 
-        Args:
-            x (torch.Tensor): 1-D or 2-D logits tensor.
-            one_hot (bool): return one-hot representation instead of values.
-
-        Returns:
-            If ``one_hot`` is False (default): the decoded value(s).  
-            If ``one_hot`` is True: a float tensor of shape (*, width)
-            containing one-hot vectors for the selected indices.
+        * If ``one_hot`` is False (default)  →  Python values (same nesting).
+        * If ``one_hot`` is True            →  float tensor with shape
+                                              (*x.shape[:-1], width*).
         """
-        idx = self.idx(x)
+        idx = self.idx(x)  # shape: x.shape[:-1]
 
         if one_hot:
+            # add width dim back at the end → (*batch_dims, width)
             return F.one_hot(idx, num_classes=self.width).to(torch.float32)
 
-        if x.ndim == 1:
-            return self.choices[idx.item()]
-        return [self.choices[i] for i in idx]
+        # ---- map indices → choices with correct nesting ----
+        def _map(vals):
+            if isinstance(vals, list):
+                return [_map(v) for v in vals]
+            return self.choices[vals]
+
+        return _map(idx.tolist())
 
     def encode(
         self,
@@ -72,17 +86,24 @@ class VocabDecoder(Thunker):
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         """
-        Convert value(s) into one-hot logits.
+        Convert value(s) to one-hot logits (float32) with shape
+        (*value.shape, width*).
+
+        Works with scalars, lists, or arbitrarily nested Python lists
+        matching the batch structure you want.
         """
         device = device or "cpu"
-        values = [value] if not isinstance(value, list) else value
-        logits = torch.zeros((len(values), self.width), dtype=torch.float32, device=device)
 
-        for i, v in enumerate(values):
+        def _encode(v):
+            if isinstance(v, list):
+                return torch.stack([_encode(item) for item in v])
             if v not in self.choices:
                 raise ValueError(f"Value '{v}' not in vocabulary {self.choices}")
-            logits[i, self.choices.index(v)] = 1.0
-        return logits if isinstance(value, list) else logits[0]
+            oh = torch.zeros(self.width, dtype=torch.float32, device=device)
+            oh[self.choices.index(v)] = 1.0
+            return oh
+
+        return _encode(value)
 
     # ---------- misc ---------- #
 
@@ -93,7 +114,7 @@ class VocabDecoder(Thunker):
         )
 
     def __len__(self):
-        return len(self.choices)
+        return self.width
 
 class OneHotIntDecoder(Thunker):
     def __init__(self, size: int, temp: float, offset: int = 0, **kwargs):
